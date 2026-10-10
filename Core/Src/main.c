@@ -22,6 +22,7 @@
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 #include <string.h>
+#include <stdio.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -31,7 +32,7 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-
+#define TX_SIZE 1000
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -43,17 +44,27 @@
 TIM_HandleTypeDef htim2;
 
 UART_HandleTypeDef huart1;
+DMA_HandleTypeDef hdma_usart1_tx;
 
 /* USER CODE BEGIN PV */
 uint8_t rx_byte = 0;
 uint8_t rx_buf[100];
 uint8_t rx_index = 0;
 volatile uint8_t line_ready = 0;
+
+uint8_t tx_data[1000];
+
+uint32_t t_start, t_end, elapsed_cycles, t_ret;
+volatile uint32_t loop_count = 0;
+
+volatile uint8_t tx_done;
+volatile uint32_t t_done;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_DMA_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
@@ -94,6 +105,7 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_DMA_Init();
   MX_TIM2_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
@@ -102,6 +114,14 @@ int main(void)
 
   const char *teststr = "Hello STM32\r\n";
   HAL_UART_Transmit(&huart1, (uint8_t *)teststr, strlen(teststr), 100);
+
+  for(int i=0; i<TX_SIZE; i++){
+	tx_data[i] = 'A' + i%26;
+  }
+
+  CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;   // DWT 블록 켜기
+  DWT->CYCCNT = 0;                                  // 카운터 초기화
+  DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;              // 카운터 시작
 
   HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
 
@@ -114,6 +134,7 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	loop_count++;
 	if(line_ready==1){
 		HAL_UART_Transmit(&huart1, (uint8_t *)"> ", strlen("> "), 100);
 		HAL_UART_Transmit(&huart1, (uint8_t *)rx_buf, rx_index, 100);
@@ -133,6 +154,70 @@ int main(void)
 			else{
 				HAL_UART_Transmit(&huart1, (uint8_t *)"LED IS OFF\r\n", strlen("LED IS OFF\r\n"), 100);
 			}
+		}
+		else if(strcmp((char *)rx_buf,"send")==0){
+			t_start = DWT->CYCCNT;
+			uint32_t loop_count_start = loop_count;
+			HAL_UART_Transmit(&huart1, tx_data, TX_SIZE, 500);
+			t_end = DWT->CYCCNT;
+			uint32_t loop_count_end = loop_count;
+			elapsed_cycles = t_end - t_start;
+			char msg[64];
+			int len = sprintf(msg, "cycles = %lu, us = %lu, loopcount = %lu\r\n", (unsigned long)elapsed_cycles,
+			        (unsigned long)(elapsed_cycles / 8), (unsigned long)(loop_count_end-loop_count_start));
+			HAL_UART_Transmit(&huart1, (uint8_t *)msg, len, 100);
+		}
+		else if(strcmp((char *)rx_buf,"send it")==0){
+			tx_done = 0;
+			t_start = DWT->CYCCNT;
+			uint32_t loop_count_start = loop_count;
+			HAL_StatusTypeDef ret = HAL_UART_Transmit_IT(&huart1, tx_data, TX_SIZE);
+			t_ret = DWT->CYCCNT;
+			if(ret != HAL_OK){
+				HAL_UART_Transmit(&huart1, (uint8_t *)"busy/error\r\n", strlen("busy/error\r\n"), 100);
+			}
+			else{
+				while(tx_done == 0){ loop_count++; }
+				uint32_t loop_count_end = loop_count;
+				char msg[100];
+				uint32_t ret_cycles = t_ret - t_start;
+				uint32_t done_cycles = t_done - t_start;
+				int len = sprintf(msg, " it ret = %lu, done = %lu, loop = %lu, us = %lu\r\n", (unsigned long)ret_cycles,
+						(unsigned long)(done_cycles), (unsigned long)(loop_count_end-loop_count_start),
+						(unsigned long)(done_cycles / 8));
+				HAL_UART_Transmit(&huart1, (uint8_t *)msg, len, 100);
+			}
+		}
+		else if(strcmp((char *)rx_buf,"send dma")==0){
+			tx_done = 0;
+			t_start = DWT->CYCCNT;
+			uint32_t loop_count_start = loop_count;
+			HAL_StatusTypeDef ret = HAL_UART_Transmit_DMA(&huart1, tx_data, TX_SIZE);
+			t_ret = DWT->CYCCNT;
+			if(ret != HAL_OK){
+				HAL_UART_Transmit(&huart1, (uint8_t *)"busy/error\r\n", strlen("busy/error\r\n"), 100);
+			}
+			else{
+				while(tx_done == 0){ loop_count++; }
+				uint32_t loop_count_end = loop_count;
+				char msg[100];
+				uint32_t ret_cycles = t_ret - t_start;
+				uint32_t done_cycles = t_done - t_start;
+				int len = sprintf(msg, " DMA ret = %lu, done = %lu, loop = %lu, us = %lu\r\n", (unsigned long)ret_cycles,
+						(unsigned long)(done_cycles), (unsigned long)(loop_count_end-loop_count_start),
+						(unsigned long)(done_cycles / 8));
+				HAL_UART_Transmit(&huart1, (uint8_t *)msg, len, 100);
+			}
+		}
+		else if(strcmp((char *)rx_buf,"send idle")==0){
+			t_start = DWT->CYCCNT;
+			uint32_t loop_count_start = loop_count;
+
+			while(DWT->CYCCNT - t_start < 690500){ loop_count++; }
+			uint32_t loop_count_end = loop_count;
+			char msg[100];
+			int len = sprintf(msg, " idle  loop = %lu\r\n", (unsigned long)(loop_count_end-loop_count_start));
+			HAL_UART_Transmit(&huart1, (uint8_t *)msg, len, 100);
 		}
 		else{
 			HAL_UART_Transmit(&huart1, (uint8_t *)"unknown\r\n", strlen("unknown\r\n"), 100);
@@ -200,9 +285,9 @@ static void MX_TIM2_Init(void)
 
   /* USER CODE END TIM2_Init 1 */
   htim2.Instance = TIM2;
-  htim2.Init.Prescaler = 7;
+  htim2.Init.Prescaler = 79;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 999;
+  htim2.Init.Period = 9999;
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -256,6 +341,22 @@ static void MX_USART1_UART_Init(void)
   /* USER CODE BEGIN USART1_Init 2 */
 
   /* USER CODE END USART1_Init 2 */
+
+}
+
+/**
+  * Enable DMA controller clock
+  */
+static void MX_DMA_Init(void)
+{
+
+  /* DMA controller clock enable */
+  __HAL_RCC_DMA1_CLK_ENABLE();
+
+  /* DMA interrupt init */
+  /* DMA1_Channel4_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(DMA1_Channel4_IRQn, 0, 0);
+  HAL_NVIC_EnableIRQ(DMA1_Channel4_IRQn);
 
 }
 
@@ -342,6 +443,13 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 				rx_index++;
 			}
 		}
+	}
+}
+
+void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart){
+	if(huart->Instance == USART1){
+		t_done = DWT->CYCCNT;
+		tx_done = 1;
 	}
 }
 
