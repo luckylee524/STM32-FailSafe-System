@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-
+#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -42,14 +42,20 @@
 /* Private variables ---------------------------------------------------------*/
 TIM_HandleTypeDef htim2;
 
-/* USER CODE BEGIN PV */
+UART_HandleTypeDef huart1;
 
+/* USER CODE BEGIN PV */
+uint8_t rx_byte = 0;
+uint8_t rx_buf[100];
+uint8_t rx_index = 0;
+volatile uint8_t line_ready = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_TIM2_Init(void);
+static void MX_USART1_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -89,10 +95,15 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_TIM2_Init();
+  MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
 
-  HAL_TIM_PWM_Start(&htim2, TIM_CHANNEL_1);
-  __HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, 100);
+  HAL_TIM_Base_Start_IT(&htim2);
+
+  const char *teststr = "Hello STM32\r\n";
+  HAL_UART_Transmit(&huart1, (uint8_t *)teststr, strlen(teststr), 100);
+
+  HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
 
   /* USER CODE END 2 */
 
@@ -103,6 +114,33 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	if(line_ready==1){
+		HAL_UART_Transmit(&huart1, (uint8_t *)"> ", strlen("> "), 100);
+		HAL_UART_Transmit(&huart1, (uint8_t *)rx_buf, rx_index, 100);
+		HAL_UART_Transmit(&huart1, (uint8_t *)"\r\n", strlen("\r\n"), 100);
+
+		if(strcmp((char *)rx_buf,"led on")==0){
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, GPIO_PIN_SET);
+		}
+		else if(strcmp((char *)rx_buf,"led off")==0){
+			HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0, GPIO_PIN_RESET);
+		}
+		else if(strcmp((char *)rx_buf,"status")==0){
+			uint8_t temp = HAL_GPIO_ReadPin(GPIOA, GPIO_PIN_0);
+			if(temp == 1){
+				HAL_UART_Transmit(&huart1, (uint8_t *)"LED IS ON\r\n", strlen("LED IS ON\r\n"), 100);
+			}
+			else{
+				HAL_UART_Transmit(&huart1, (uint8_t *)"LED IS OFF\r\n", strlen("LED IS OFF\r\n"), 100);
+			}
+		}
+		else{
+			HAL_UART_Transmit(&huart1, (uint8_t *)"unknown\r\n", strlen("unknown\r\n"), 100);
+		}
+		rx_index = 0;
+		line_ready = 0;
+	}
+
   }
   /* USER CODE END 3 */
 }
@@ -157,7 +195,6 @@ static void MX_TIM2_Init(void)
 
   TIM_ClockConfigTypeDef sClockSourceConfig = {0};
   TIM_MasterConfigTypeDef sMasterConfig = {0};
-  TIM_OC_InitTypeDef sConfigOC = {0};
 
   /* USER CODE BEGIN TIM2_Init 1 */
 
@@ -177,28 +214,48 @@ static void MX_TIM2_Init(void)
   {
     Error_Handler();
   }
-  if (HAL_TIM_PWM_Init(&htim2) != HAL_OK)
-  {
-    Error_Handler();
-  }
   sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
   sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
   if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
   {
     Error_Handler();
   }
-  sConfigOC.OCMode = TIM_OCMODE_PWM1;
-  sConfigOC.Pulse = 0;
-  sConfigOC.OCPolarity = TIM_OCPOLARITY_HIGH;
-  sConfigOC.OCFastMode = TIM_OCFAST_DISABLE;
-  if (HAL_TIM_PWM_ConfigChannel(&htim2, &sConfigOC, TIM_CHANNEL_1) != HAL_OK)
-  {
-    Error_Handler();
-  }
   /* USER CODE BEGIN TIM2_Init 2 */
 
   /* USER CODE END TIM2_Init 2 */
-  HAL_TIM_MspPostInit(&htim2);
+
+}
+
+/**
+  * @brief USART1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART1_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART1_Init 0 */
+
+  /* USER CODE END USART1_Init 0 */
+
+  /* USER CODE BEGIN USART1_Init 1 */
+
+  /* USER CODE END USART1_Init 1 */
+  huart1.Instance = USART1;
+  huart1.Init.BaudRate = 115200;
+  huart1.Init.WordLength = UART_WORDLENGTH_8B;
+  huart1.Init.StopBits = UART_STOPBITS_1;
+  huart1.Init.Parity = UART_PARITY_NONE;
+  huart1.Init.Mode = UART_MODE_TX_RX;
+  huart1.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart1.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART1_Init 2 */
+
+  /* USER CODE END USART1_Init 2 */
 
 }
 
@@ -218,19 +275,19 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_2, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0|GPIO_PIN_2, GPIO_PIN_RESET);
+
+  /*Configure GPIO pins : PA0 PA2 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_2;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PA1 */
   GPIO_InitStruct.Pin = GPIO_PIN_1;
   GPIO_InitStruct.Mode = GPIO_MODE_IT_FALLING;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
-
-  /*Configure GPIO pin : PA2 */
-  GPIO_InitStruct.Pin = GPIO_PIN_2;
-  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
@@ -244,7 +301,6 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 volatile uint32_t exti_count = 0;
-uint32_t duty_table[3] = {100, 500, 900};
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 	static uint32_t last_tick = 0;
@@ -254,8 +310,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		{
 			last_tick = now;
 			exti_count++;
-			// HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_0);   // LED 상태 변경
-			__HAL_TIM_SET_COMPARE(&htim2, TIM_CHANNEL_1, duty_table[exti_count%3]);
+			HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_0);   // LED 상태 변경
 		}
 	}
 }
@@ -269,6 +324,25 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
         tim_count++;
         HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_2);
     }
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
+	if(huart->Instance == USART1){
+		HAL_UART_Transmit(&huart1, &rx_byte, 1, 100);
+		HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
+		if(rx_byte == '\n' || rx_byte == '\r'){
+			if(rx_index > 0){
+				rx_buf[rx_index] = '\0';
+				line_ready = 1;
+			}
+		}
+		else{
+			if(rx_index < 99){
+				rx_buf[rx_index] = rx_byte;
+				rx_index++;
+			}
+		}
+	}
 }
 
 /* USER CODE END 4 */
