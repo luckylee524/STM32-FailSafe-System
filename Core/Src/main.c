@@ -33,6 +33,7 @@
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
 #define TX_SIZE 1000
+#define BMP180_ADDR 0xEE
 /* USER CODE END PD */
 
 /* Private macro -------------------------------------------------------------*/
@@ -41,6 +42,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+I2C_HandleTypeDef hi2c1;
+
 TIM_HandleTypeDef htim2;
 
 UART_HandleTypeDef huart1;
@@ -59,6 +62,27 @@ volatile uint32_t loop_count = 0;
 
 volatile uint8_t tx_done;
 volatile uint32_t t_done;
+
+volatile HAL_StatusTypeDef  bmp180_ready_status;
+volatile uint32_t bmp180_i2c_error;
+uint8_t bmp180_chip_id = 0xFF;
+volatile HAL_StatusTypeDef bmp180_read_status;
+uint8_t bmp180_cmd = 0x2E;
+volatile HAL_StatusTypeDef bmp180_write_status;
+
+uint8_t bmp180_ut_data[2] = {0xFF, 0xFF};   // 센티널 초기값
+uint16_t bmp180_raw_temp = 0;
+volatile HAL_StatusTypeDef bmp180_ut_status = HAL_BUSY;
+
+uint8_t  bmp180_calib_raw[22];
+volatile HAL_StatusTypeDef bmp180_calib_status = HAL_BUSY;
+
+int16_t  AC1, AC2, AC3, B1, B2, MB, MC, MD;
+uint16_t AC4, AC5, AC6;
+
+volatile int32_t bmp180_X1, bmp180_X2, bmp180_B5;
+volatile int32_t bmp180_temp_x10;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -67,6 +91,7 @@ static void MX_GPIO_Init(void);
 static void MX_DMA_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_USART1_UART_Init(void);
+static void MX_I2C1_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -108,9 +133,67 @@ int main(void)
   MX_DMA_Init();
   MX_TIM2_Init();
   MX_USART1_UART_Init();
+  MX_I2C1_Init();
   /* USER CODE BEGIN 2 */
 
   HAL_TIM_Base_Start_IT(&htim2);
+
+  bmp180_ready_status = HAL_I2C_IsDeviceReady(&hi2c1, BMP180_ADDR, 10, 1000);
+  if(bmp180_ready_status!=HAL_OK){
+	  bmp180_i2c_error = hi2c1.ErrorCode;
+  }
+  bmp180_read_status = HAL_I2C_Mem_Read(&hi2c1, BMP180_ADDR, 0xD0, I2C_MEMADD_SIZE_8BIT,
+		  &bmp180_chip_id, 1, 1000);
+
+  if(bmp180_read_status == HAL_OK && bmp180_chip_id == 0x55){
+	  __NOP();
+  }
+  else{
+	  bmp180_i2c_error = hi2c1.ErrorCode;
+  }
+  bmp180_write_status = HAL_I2C_Mem_Write(&hi2c1, BMP180_ADDR, 0xF4, I2C_MEMADD_SIZE_8BIT, &bmp180_cmd, 1, 1000);
+  if(bmp180_write_status!=HAL_OK){
+	  bmp180_i2c_error = hi2c1.ErrorCode;
+  }
+  HAL_Delay(5);
+
+  bmp180_ut_status = HAL_I2C_Mem_Read(&hi2c1, BMP180_ADDR, 0xF6, I2C_MEMADD_SIZE_8BIT,
+                                      bmp180_ut_data, 2, 1000);
+  if (bmp180_ut_status == HAL_OK) {
+      bmp180_raw_temp = ((uint16_t)bmp180_ut_data[0] << 8) | bmp180_ut_data[1];
+  } else {
+      bmp180_i2c_error = hi2c1.ErrorCode;
+  }
+
+  bmp180_calib_status = HAL_I2C_Mem_Read(&hi2c1, BMP180_ADDR, 0xAA, I2C_MEMADD_SIZE_8BIT,
+                                         bmp180_calib_raw, 22, 1000);
+  if (bmp180_calib_status == HAL_OK) {
+      uint8_t *c = bmp180_calib_raw;
+      AC1 = (int16_t) ((c[0]  << 8) | c[1]);
+      AC2 = (int16_t) ((c[2]  << 8) | c[3]);
+      AC3 = (int16_t) ((c[4]  << 8) | c[5]);
+      AC4 = (uint16_t)((c[6]  << 8) | c[7]);
+      AC5 = (uint16_t)((c[8]  << 8) | c[9]);
+      AC6 = (uint16_t)((c[10] << 8) | c[11]);
+      B1  = (int16_t) ((c[12] << 8) | c[13]);
+      B2  = (int16_t) ((c[14] << 8) | c[15]);
+      MB  = (int16_t) ((c[16] << 8) | c[17]);
+      MC  = (int16_t) ((c[18] << 8) | c[19]);
+      MD  = (int16_t) ((c[20] << 8) | c[21]);
+
+      /* --- 온도 계산 (데이터시트 공식) --- */
+      bmp180_X1 = (((int32_t)bmp180_raw_temp - (int32_t)AC6) * (int32_t)AC5) >> 15;
+      bmp180_X2 = ((int32_t)MC << 11) / (bmp180_X1 + (int32_t)MD);
+      bmp180_B5 = bmp180_X1 + bmp180_X2;
+      bmp180_temp_x10 = (bmp180_B5 + 8) >> 4;     // 0.1°C 단위
+  } else {
+      bmp180_i2c_error = hi2c1.ErrorCode;
+  }
+
+  char tmsg[64];
+  int tlen = snprintf(tmsg, sizeof(tmsg), "Temperature: %ld.%ld C\r\n",
+                      (long)(bmp180_temp_x10 / 10), (long)(bmp180_temp_x10 % 10));
+  HAL_UART_Transmit(&huart1, (uint8_t *)tmsg, tlen, 100);
 
   const char *teststr = "Hello STM32\r\n";
   HAL_UART_Transmit(&huart1, (uint8_t *)teststr, strlen(teststr), 100);
@@ -267,6 +350,40 @@ void SystemClock_Config(void)
 }
 
 /**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
+
+}
+
+/**
   * @brief TIM2 Initialization Function
   * @param None
   * @retval None
@@ -374,6 +491,7 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOA_CLK_ENABLE();
+  __HAL_RCC_GPIOB_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOA, GPIO_PIN_0|GPIO_PIN_2, GPIO_PIN_RESET);
