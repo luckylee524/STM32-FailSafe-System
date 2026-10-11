@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include <string.h>
 #include <stdio.h>
+#include "fsm.h"
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
@@ -43,6 +44,8 @@
 
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
+
+IWDG_HandleTypeDef hiwdg;
 
 TIM_HandleTypeDef htim2;
 
@@ -92,6 +95,7 @@ static void MX_DMA_Init(void);
 static void MX_TIM2_Init(void);
 static void MX_USART1_UART_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_IWDG_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -134,8 +138,9 @@ int main(void)
   MX_TIM2_Init();
   MX_USART1_UART_Init();
   MX_I2C1_Init();
+  MX_IWDG_Init();
   /* USER CODE BEGIN 2 */
-
+#if 0
   HAL_TIM_Base_Start_IT(&htim2);
 
   bmp180_ready_status = HAL_I2C_IsDeviceReady(&hi2c1, BMP180_ADDR, 10, 1000);
@@ -207,7 +212,8 @@ int main(void)
   DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;              // 카운터 시작
 
   HAL_UART_Receive_IT(&huart1, &rx_byte, 1);
-
+#endif
+  FSM_Init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -217,6 +223,8 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+	FSM_Run();
+#if 0
 	loop_count++;
 	if(line_ready==1){
 		HAL_UART_Transmit(&huart1, (uint8_t *)"> ", strlen("> "), 100);
@@ -308,6 +316,7 @@ int main(void)
 		rx_index = 0;
 		line_ready = 0;
 	}
+#endif
 
   }
   /* USER CODE END 3 */
@@ -325,9 +334,10 @@ void SystemClock_Config(void)
   /** Initializes the RCC Oscillators according to the specified parameters
   * in the RCC_OscInitTypeDef structure.
   */
-  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI|RCC_OSCILLATORTYPE_LSI;
   RCC_OscInitStruct.HSIState = RCC_HSI_ON;
   RCC_OscInitStruct.HSICalibrationValue = RCC_HSICALIBRATION_DEFAULT;
+  RCC_OscInitStruct.LSIState = RCC_LSI_ON;
   RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
   if (HAL_RCC_OscConfig(&RCC_OscInitStruct) != HAL_OK)
   {
@@ -380,6 +390,34 @@ static void MX_I2C1_Init(void)
   /* USER CODE BEGIN I2C1_Init 2 */
 
   /* USER CODE END I2C1_Init 2 */
+
+}
+
+/**
+  * @brief IWDG Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_IWDG_Init(void)
+{
+
+  /* USER CODE BEGIN IWDG_Init 0 */
+
+  /* USER CODE END IWDG_Init 0 */
+
+  /* USER CODE BEGIN IWDG_Init 1 */
+
+  /* USER CODE END IWDG_Init 1 */
+  hiwdg.Instance = IWDG;
+  hiwdg.Init.Prescaler = IWDG_PRESCALER_32;
+  hiwdg.Init.Reload = 1250;
+  if (HAL_IWDG_Init(&hiwdg) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN IWDG_Init 2 */
+
+  /* USER CODE END IWDG_Init 2 */
 
 }
 
@@ -521,6 +559,7 @@ static void MX_GPIO_Init(void)
 /* USER CODE BEGIN 4 */
 volatile uint32_t exti_count = 0;
 
+#if 0
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 	static uint32_t last_tick = 0;
 	if(GPIO_Pin == GPIO_PIN_1){
@@ -533,6 +572,7 @@ void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin){
 		}
 	}
 }
+#endif
 
 volatile uint32_t tim_count = 0;   // 확인용
 
@@ -545,6 +585,7 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
     }
 }
 
+#if 0
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 	if(huart->Instance == USART1){
 		HAL_UART_Transmit(&huart1, &rx_byte, 1, 100);
@@ -563,13 +604,16 @@ void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart){
 		}
 	}
 }
+#endif
 
+#if 0
 void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart){
 	if(huart->Instance == USART1){
 		t_done = DWT->CYCCNT;
 		tx_done = 1;
 	}
 }
+#endif
 
 /* USER CODE END 4 */
 
