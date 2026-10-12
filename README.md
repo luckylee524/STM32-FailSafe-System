@@ -5,35 +5,30 @@
 
 ## 개발 환경
 
-| 항목 | 내용 |
-|---|---|
-| MCU | STM32F103C8T6 (Blue Pill) |
-| 클럭 | HSI 8MHz (PLL 미사용) |
-| IDE / 라이브러리 | STM32CubeIDE, STM32 HAL |
-| 센서 | BMP180 (I2C, 7bit 주소 `0x77`) |
-| PC 통신 | USB-TTL, PuTTY (115200 8N1) |
+- **MCU**: STM32F103C8T6 (Blue Pill), HSI 8MHz (PLL 미사용)
+- **IDE / 라이브러리**: STM32CubeIDE, STM32 HAL
+- **센서**: BMP180 (I2C, 7bit 주소 `0x77`)
+- **PC 통신**: USB-TTL, PuTTY (115200 8N1)
 
 ## 핀 맵
 
-| 핀 | 기능 |
-|---|---|
-| PA0 | 제어 출력 (LED / PWM 실습 시 TIM2_CH1) |
-| PA1 | 버튼 입력 (EXTI1, Falling, Pull-up) |
-| PA2 | 상태 LED (TIM2 인터럽트로 토글) |
-| PA9 / PA10 | USART1 TX / RX |
-| PB6 / PB7 | I2C1 SCL / SDA (BMP180) |
+- `PA0`: 제어 출력 (PWM 실습 시 TIM2_CH1)
+- `PA1`: 버튼 입력 (EXTI1, Falling, Pull-up)
+- `PA2`: 상태 LED (TIM2 인터럽트로 토글)
+- `PA9` / `PA10`: USART1 TX / RX
+- `PB6` / `PB7`: I2C1 SCL / SDA (BMP180)
 
 ## 로드맵 진행 현황
 
-| 주차 | 주제 | 핵심 개념 | 구현 내용 |
-|---|---|---|---|
-| 1주차 | 환경 구축 | GPIO, Register | LED Blink(토글, 500ms/1000ms), 버튼 입력 |
-| 2주차 | STM32 기초 | Interrupt, ISR, Timer | 버튼 Polling vs EXTI, TIM2 0.5초 주기 LED, 채터링 방지 |
-| 3주차 | STM32 기초 | PWM, Timer | PSC=7, ARR=999 (1kHz) PWM, 버튼으로 Duty 10/50/90% 순환 |
-| 4주차 | 통신 | UART, Serial | PC ↔ STM32 UART, 에코, CLI(`led on/off`, `status`) |
-| 5주차 | 데이터 전송 | DMA, UART Blocking/IT/DMA | 1,000바이트 전송 방식별 성능 비교 |
-| 6주차 | 센서 | I2C, Address, ACK/NACK | BMP180 Chip ID, 보정 계수, 온도 계산, UART 출력 |
-| 7주차 | Firmware 구조 | FSM, Watchdog | INIT/NORMAL/ERROR/SAFE 상태머신, IWDG, 고장 주입 |
+| <sub>주차</sub> | <sub>주제</sub> | <sub>핵심 개념</sub> | <sub>구현 내용</sub> |
+|:-:|:-:|---|---|
+| <sub>1</sub> | <sub>환경 구축</sub> | <sub>GPIO, Register</sub> | <sub>LED 토글(500/1000ms), 버튼 입력</sub> |
+| <sub>2</sub> | <sub>기초</sub> | <sub>Interrupt, Timer</sub> | <sub>Polling vs EXTI, TIM2 0.5초 LED</sub> |
+| <sub>3</sub> | <sub>기초</sub> | <sub>PWM</sub> | <sub>1kHz PWM, Duty 10/50/90%</sub> |
+| <sub>4</sub> | <sub>통신</sub> | <sub>UART</sub> | <sub>PC ↔ STM32 CLI</sub> |
+| <sub>5</sub> | <sub>데이터 전송</sub> | <sub>DMA</sub> | <sub>Blocking/IT/DMA 성능 비교</sub> |
+| <sub>6</sub> | <sub>센서</sub> | <sub>I2C</sub> | <sub>BMP180 온도 측정, UART 출력</sub> |
+| <sub>7</sub> | <sub>Firmware 구조</sub> | <sub>FSM, Watchdog</sub> | <sub>상태머신, IWDG, 고장 주입</sub> |
 
 ## 주차별 상세
 
@@ -129,3 +124,8 @@ Core/
 3. USB-TTL(PA9/PA10) 연결 후 PuTTY 접속 (115200, 8N1)
 4. 부팅 메시지와 `[tick] STATE A -> B` 로그 확인
 
+## 다음 단계
+
+- [ ] 8주차 이후 로드맵 (2-Node 구성, Embedded Linux 연동)
+- [ ] 시스템 구성도 / State Diagram 이미지 추가
+- [ ] 동작 영상 / 터미널 캡처 추가
